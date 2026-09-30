@@ -1,0 +1,48 @@
+name: Build DualBoot Pipa bundle
+
+on:
+  push:
+    branches: [main]
+    tags: ['v*']
+  workflow_dispatch:
+    inputs:
+      release:
+        description: Publish a GitHub release
+        type: boolean
+        default: true
+
+permissions:
+  contents: write
+
+jobs:
+  bundle:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install toolchain
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            gcc-aarch64-linux-gnu binutils-aarch64-linux-gnu libc6-dev-arm64-cross file zip
+
+      - name: Pull, build and pack
+        run: bash build.sh
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: DualBoot-Pipa
+          path: |
+            dist/DualBoot-Pipa.zip
+            dist/DualBoot-Pipa.zip.sha256
+
+      - name: Publish release
+        if: startsWith(github.ref, 'refs/tags/v') || inputs.release == true
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if [[ "$GITHUB_REF" == refs/tags/* ]]; then tag="$GITHUB_REF_NAME"
+          else tag="build-$(date -u +%Y%m%d)-${{ github.run_number }}"; fi
+          gh release create "$tag" dist/DualBoot-Pipa.zip dist/DualBoot-Pipa.zip.sha256 \
+            --target "$GITHUB_SHA" --title "DualBoot Pipa $tag" \
+            --notes "$(cat dist/DualBoot-Pipa/BUILD_INFO.txt)"
